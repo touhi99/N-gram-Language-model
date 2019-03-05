@@ -70,7 +70,7 @@ class LanguageModel:
 		start_time = time.time()
 		self.vocabulary = set(flatten(token_sequences))
 		self.vocabulary.add(None)
-		self.vocabulary.add('<UNK>')
+		#self.vocabulary.add('<UNK>')
 		#print(len(self.vocabulary))
 		#print("--- %s seconds ---" % (time.time() - start_time))
 		for item in token_sequences:
@@ -85,7 +85,7 @@ class LanguageModel:
 			if len(self.count) % 1000 == 0:
 				print("Training {} tokens".format(len(self.count)))
 
-		self.count[('<UNK>',)] = {'<UNK>': random.random()}
+		#self.count[('<UNK>',)] = {'<UNK>': random.random()}
 		print(len(self.count))
 		print(len(self.vocabulary))
 	
@@ -188,19 +188,27 @@ class LanguageModel:
 		"""
 
 		#print(distribution)
-		beam_list = []
+		beam_list = set()
+		counter = 0
 		k = np.random.choice(list(distribution.keys()), 1, list(distribution.values()))[0]
 		v = distribution[k]
 		if not self.beam_flag:
 			return (k, v)
 		else:
-			while True:
-				beam_list.append((k, v))
+			#return distribution.items()
+			# we take at max 5 word for our case
+			while counter <= 5:
+				beam_list.add((k, v))
 				k = np.random.choice(list(distribution.keys()), 1, list(distribution.values()))[0]
 				v = distribution[k]
 				if len(beam_list) == self.beam_width:
 					break
-			return beam_list
+				counter+=1
+			#print( list(beam_list))
+
+			return list(beam_list)
+			
+			
 
 	def perplexity(self, data):
 		"""
@@ -290,7 +298,7 @@ class LanguageModel:
 			sequence.append(r)
 		return sequence
 
-	def beam_search(self, tokens, beam_width=10, clip_len=-1):
+	def beam_search(self, tokens, beam_width=10, clip_len=15):
 		"""
 		Search and return the most probable sentence from the current beam
 
@@ -315,18 +323,20 @@ class LanguageModel:
 			#Add complete sentences that do not yet have the best probability to the current beam, the rest prepare to add more words to them.
 			for (prefix_prob, complete, prefix) in prev_beam:
 				if complete == True:
-					curr_beam.add(prefix_prob, True, prefix)
+					 if len(prefix) >= clip_len:
+					 	curr_beam.add(prefix_prob, True, prefix)
 				else:
 				#Get probability of each possible next word for the incomplete prefix.
 					for next_word, next_prob in self.sample(self.p_next(prefix)):
 						if next_word == None: #if next word is the end token then mark prefix as complete and leave out the end token
-							curr_beam.add(prefix_prob*next_prob, True, prefix)
+							if len(prefix) >= clip_len:
+								curr_beam.add(prefix_prob*next_prob, True, prefix)
 						else: #if next word is a non-end token then mark prefix as incomplete
 							curr_beam.add(prefix_prob*next_prob, False, prefix+[next_word])
 
 			(best_prob, best_complete, best_prefix) = max(curr_beam)
 
-			if best_complete == True or len(best_prefix)-1 == clip_len: #if most probable prefix is a complete sentence or has a length that exceeds the clip length (ignoring the start token) then return it
+			if best_complete == True and len(best_prefix) >= clip_len: #if most probable prefix is a complete sentence or has a length that exceeds the clip length (ignoring the start token) then return it
 				return (best_prefix[1:], best_prob) #return best sentence without the start token and together with its probability
 			prev_beam = curr_beam
 
